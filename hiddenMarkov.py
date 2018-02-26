@@ -1,4 +1,3 @@
-
 import numpy as np
 #Need numpy for matrix calculations
 class HMM():
@@ -23,33 +22,38 @@ class HMM():
 
         self.numberOfstate = transmission_prob.shape[1]
         #number of states are equal the different states for X, is equal the number of columbs of the transmission matrix.
-
-        self.states = initial_states #this is our f value in the algorithm, set as f_0:0 to begin with. Should be transposed.
+        
+        #an np.matrix object
+        self.states_f = initial_states #this is our f value in the algorithm, set as f_0:0 to begin with. Should be transposed.
         # states[0] is the probability of it being rain, and states[1] is the probability of it being no rain.
+        
+        self.b_messages = self.init_b_messages()  # an vector where every element is one.
 
-        self.forward_states = [] #An matrix that will simply hold the probability of each state being present at time t. e.g f_0:1 is at time 1. f_0:t is at state t.
+        #simple list
+        #self.forward_states = [] #An list that will simply hold the probability of each state being present at time t. e.g f_0:1 is at time 1. f_0:t is at state t.
 
-        self.observations = observations #Holds the observations at the different times t.
+        #self.backward_states = [] #An list that wil hold the each state from the backwards algorithm.
 
         if initial_states == None:
-            self.states = self.init_obs_states()
+            self.states_f = self.init_obs_states()
         else:
             #Check if the inital states are f_normalized
             if(initial_states.shape[1] != 1):
-                self.states = self.states.transpose()
-            f_t = self.states.transpose()
+                self.states_f = self.states_f.getT()
+            f_t = self.states_f.getT()
 
-            if(f_t*self.states != 1):
+            if(f_t*self.states_f != 1):
                 print("Error, initial states are not normalized, all values should be equal to 1")
                 return
-
-    
 
     def init_obs_states(self):
         """ Initiate the initial states, if we don't know these, we set them as being equally probable """
         n_obsStates = self.emission_prob.shape[1] #collect number of columbs in the emission matrix, there should be one per observable event.
         onesM = np.ones(n_obsStates)
         return np.matrix([onesM*(1/n_obsStates)]).getT()
+
+    def init_b_messages(self):
+        return np.matrix(np.ones(self.numberOfstate)).getT()
     
     def observMatrix(self, observation):
         """ Create the observation matrix dependant on what observations we have observed (Observation model as matrix),
@@ -57,63 +61,125 @@ class HMM():
 
         columb_eventProb = self.emission_prob[:,observation]
         #print(columb_eventProb)
-        return np.diag(np.squeeze(columb_eventProb.tolist())) #create an observation matrix of a given observation with the event matrix.
+        #print(columb_eventProb)
+        return np.matrix(np.diag(np.ravel(columb_eventProb))) #create an observation matrix of a given observation with the event matrix.
         """
             if observation is 0: the observation matrix should look like [[0.9, 0][0, 0.2]]
             if observation is 1: the obs_matrix should look like [[0.1 ,0],[]]
-        """
-
-    def reset(self):
-        """ Reset our states, and initial state so that we dont have to create multiple models between each search """
-        self.states = self.init_obs_states()
-        self.forward_states = []
+        """    
+    def obsMatrix(self, observation):
+        columb_eventProb = self.emission_prob[:,observation]
+        print(columb_eventProb)
+        a = np.matrix(np.diag(np.ravel(columb_eventProb)))
+        print(a)
+        return a
 
     def forward(self, observations):
         """ forward operation """
-        self.reset()
-        self.forward_states.append(np.ravel(self.states.transpose()).tolist()) #simply hold the intial state.
+        forward_states = []
+        forward_states.append(np.ravel(self.states_f.getT()).tolist()) #simply hold the intial state.
 
         for observation in np.squeeze(observations.tolist()): #itterate tru every observation. 
             #print("O_t * T^t * f_t^t: \n{} {} {} ".format(self.observMatrix(observation), self.transmission_prob.transpose(), self.states))
-            state_t = (self.observMatrix(observation).transpose()*self.transmission_prob.getT()) * self.states
-            self.states = self.normalizer(state_t) #normalize the array
+            state_t = (self.observMatrix(observation).getT()*self.transmission_prob.getT()) * self.states_f
+            self.states_f = self.normalizer(state_t) #normalize the array
             #print("we got f_t: {}".format(self.states))
-            self.forward_states.append(np.ravel(self.states.transpose()).tolist()) #store the normalized state
-
+            forward_states.append(np.ravel(self.states_f.transpose()).tolist()) #store the normalized state
+        self.states_f = np.matrix(forward_states[0]).getT() #set the initial states back
+        return forward_states #Return list of the forward states.
         #state vector f_0:t = normalizer( f_0:t-1 T O_t ), which we can easily computet, since all 3 are matrixes
         #Itterate trou every obeservation, calculating the probable state at given time.
+    
+    def forward_i(self, f_prev , observation):#one itteration of forward algorithm, to match forward-backward algoritm.
+        print("input: {} {} ".format(f_prev, observation))
+        print("shapes: {} {} {}".format(self.observMatrix(observation).shape,  self.transmission_prob.getT().shape, f_prev.shape))
+   
+        forward_state = self.normalizer((self.observMatrix(observation)*self.transmission_prob.getT())*f_prev)
+        return np.ravel(forward_state).tolist() #turn matrix into list.
 
-    def normalizer(self, f):
-        """ Takes a state f transposed, and normalizes it so that the sum of all possible states are 1.
+    def backward(self, observations):
+        backward_states = []
+        backward_states.append(np.ravel(self.b_messages).tolist())
+        for i, observation in reversed(list(enumerate(np.ravel(observations).tolist()))):
+            state_t = (self.transmission_prob*self.observMatrix(observation)*self.b_messages)
+            self.b_messages = self.normalizer(state_t)
+            backward_states.append(np.ravel(self.b_messages).tolist())
+        self.b_messages = self.init_b_messages()
+        backward_states.reverse() #need to reverse the list, bc index 0 is actually the last element at this stage.
+        return backward_states
+    
+    def forward_backward(self, observations):
+
+        #f_messages = []
+        #f_messages.append(np.ravel(self.states_f).tolist())
+        b_messages = self.b_messages
+        s_vector = [] #smooted result
+        #for observation in np.ravel(observations):
+        #    #print("f_prev {} ".format(np.matrix(f_messages[-1]).getT()))
+        #    f_messages.append(self.forward_i( np.matrix(f_messages[-1]).getT(), observation ))
+        #return f_messages
+        f_messages = self.forward(observations)
+        b_messages = self.backward(observations)
+        n_obs = observations.size
+        for i in range(n_obs+1):
+            
+            #print("\ni:{} {} * {}\n ".format(i,np.matrix(f_messages[i]).getT(),np.matrix(b_messages[i]).getT()))
+            sv =  np.matrix( np.diag( np.matrix(f_messages[i]).getT()*np.matrix(b_messages[i]) ) ).getT() 
+
+            s_vector.append(np.ravel(self.normalizer(sv).getT()).tolist())
+        return s_vector
+
+    def normalizer(self, v):
+        """ Takes a vector v transposed, and normalizes it so that the sum of all possible states are 1.
         this is done by taking 1 and divide by the sum of the unnormalized states f.
-        e.g. say we have f = [0.5645 0.0745], the sum of f is 0.639,
+        e.g. say we have f = [[0.5645], [0.0745]], the sum of f is 0.639,
             1/0.639 = 1.5649.
-            f_normalized =  1.5649*[0.5645 0.0745] = 0.8834 0.1166
+            f_normalized =  1.5649*[[0.5645], [0.0745]] = 0.8834 0.1166
         """
-        c = 1/f.sum()
-        return c*f #normalize by multiplying with normalizing constant
+        c = 1/v.sum()
+        return c*v #normalize by multiplying with normalizing constant
 
+#Part B
 transmissions = np.matrix([[0.7, 0.3],[0.3, 0.7]]) #equal to the dynamic model
 
-observations = np.matrix([[0,0]]) #0 is equals umbrella, 1 is equal no umbrella
+observations_B_1 = np.matrix([[0,0]]) #0 is equals umbrella, 1 is equal no umbrella
 
 emissions = np.matrix([[0.9, 0.1],[0.2, 0.8]])
 
-#print(emissions.tolist())
-#We don't know the initial states, so we don't pass this one.
+model = HMM(transmissions, emissions) #create HMM model instance. We don't know the initial states, so we don't pass this one. 
 
-#np.array[row][columb]
+#print(model.forward(observations_B_1))
+#print(model.forward_states)
 
-#Testings
+observations_B_2 = np.matrix([0,0,1,0,0])
+#print(model.forward(observations_B_2))
 
-model = HMM(transmissions, emissions)
-model.forward(observations)
+#Part C
+observations_C_1 = observations_B_1
+#print(model.backward(observations_C_1))
 
-print(model.forward_states)
+print(model.forward_backward(observations_C_1))
+"""
+a = np.matrix([[0.5], [0.5],[0.5]])
+b = np.matrix([[0.6469],[0.3513],[0.2]])
+c = a*b.getT()
+obs_s = 3
+ident = np.matrix(np.identity(3))
+ind = np.ones(3)
+print(ind*c)
+print(np.ravel(c.diagonal().transpose()).tolist())
+"""
 
-model.forward(np.matrix([0,0,1,0,0]))
-print(model.forward_states)
+#c = np.identity((a*b.getT()).size[0])
+#print(c)
+#print(b.shape)
+#print(a*b.getT())
+#print(np.matrix(np.diag(a*b.getT())).getT())
 
+#c = a*b.getT()
+
+#d = np.matrix([[1,2,3]])
+#print(d)
 """
 obs_2 = np.matrix([[1,2]])
 obs = np.array([[1, 2]])
