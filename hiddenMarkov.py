@@ -32,11 +32,7 @@ class HMM():
         self.observations = observations #Holds the observations at the different times t.
 
         if initial_states == None:
-            #print("initial states are None")
-            n_obsStates = emission_prob.shape[1] #collect number of columbs in the emission matrix, there should be one per observable event.
-            onesM = np.ones(n_obsStates)
-            states = np.matrix([onesM*(1/n_obsStates)])
-            self.states = np.matrix([onesM*(1/n_obsStates)]).getT()
+            self.states = self.init_obs_states()
         else:
             #Check if the inital states are f_normalized
             if(initial_states.shape[1] != 1):
@@ -47,12 +43,13 @@ class HMM():
                 print("Error, initial states are not normalized, all values should be equal to 1")
                 return
 
+    
 
     def init_obs_states(self):
         """ Initiate the initial states, if we don't know these, we set them as being equally probable """
-        n_obsStates = self.emission_prob.shape[1]
+        n_obsStates = self.emission_prob.shape[1] #collect number of columbs in the emission matrix, there should be one per observable event.
         onesM = np.ones(n_obsStates)
-        return onesM*(1/n_obsStates).transpose()
+        return np.matrix([onesM*(1/n_obsStates)]).getT()
     
     def observMatrix(self, observation):
         """ Create the observation matrix dependant on what observations we have observed (Observation model as matrix),
@@ -66,8 +63,14 @@ class HMM():
             if observation is 1: the obs_matrix should look like [[0.1 ,0],[]]
         """
 
+    def reset(self):
+        """ Reset our states, and initial state so that we dont have to create multiple models between each search """
+        self.states = self.init_obs_states()
+        self.forward_states = []
+
     def forward(self, observations):
         """ forward operation """
+        self.reset()
         self.forward_states.append(np.ravel(self.states.transpose()).tolist()) #simply hold the intial state.
 
         for observation in np.squeeze(observations.tolist()): #itterate tru every observation. 
@@ -106,9 +109,10 @@ emissions = np.matrix([[0.9, 0.1],[0.2, 0.8]])
 model = HMM(transmissions, emissions)
 model.forward(observations)
 
-model_2 = HMM(transmissions,emissions)
-model_2.forward(np.matrix([0,0,1,0,0]))
-print(model_2.forward_states)
+print(model.forward_states)
+
+model.forward(np.matrix([0,0,1,0,0]))
+print(model.forward_states)
 
 """
 obs_2 = np.matrix([[1,2]])
