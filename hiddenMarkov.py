@@ -69,7 +69,7 @@ class HMM():
     def forward(self, observations):
         """ forward operation, calculating the forward messanges for given set of observations """
         forward_states = [] #forward messages
-        forward_states.append(np.ravel(self.states_f.getT()).tolist()) #simply hold the intial state.
+        forward_states.append(np.ravel(self.states_f.getT()).tolist()) #simply hold the intial state.(used in forward-backward)
 
         for observation in np.squeeze(observations.tolist()): #itterate tru every observation. 
             # f_t = O_t*T.transposed()(f_t-1).transpoed() 
@@ -87,6 +87,10 @@ class HMM():
         forward_state = self.normalizer((self.observMatrix(observation)*self.transmission_prob.getT())*f_prev)
         return np.ravel(forward_state).tolist() #turn matrix into list.
 
+    def backward_i(self,b_prev, observation):
+        b_today = (self.transmission_prob*self.observMatrix(observation)*b_prev)
+        return self.normalizer(b_today)
+
     def backward(self, observations):
         """ backwards algorithm. """
         backward_states = [] #backward messages.
@@ -103,16 +107,18 @@ class HMM():
         """ Forward-Backward algorithm, calculates based on an given observation """
 
         s_vector = [] #smooted result
-
-        f_messages = self.forward(observations) #f_messages from the forward algorithm
-        b_messages = self.backward(observations) #b_messages from the backward algorithm.
+        #first element is f_0.
+        f_messages = self.forward(observations) #f_messages from the forward algorithm, from k=0 to t. 
+        #last element is initial b value.
+        b_messages = self.backward(observations) #b_messages from the backward algorithm., frok k=0 to t.
         n_obs = observations.size
         for i in range(n_obs+1):
             #Basicly multply corresponding element in f_messages with the same i b_messanges, 
             # Since they are both represeted as an array, we have to transform to an np.matrix to run an multiplication.
             # This is basicly what we have to do for the matrixes to multiply together to [x_i*y_i, x_j,y_j, etc]
             # We run nx1 * nxm multiplication and pick out the diagonal to an 1xn matrix. 
-            sv =  np.matrix( np.diag( np.matrix(f_messages[i]).getT()*np.matrix(b_messages[i]) ) ).getT() 
+            #sv =  np.matrix( np.diag( np.matrix(f_messages[i]).getT()*np.matrix(b_messages[i]) ) ).getT() #Old method.
+            sv = np.multiply(np.matrix(f_messages[i]).getT(), np.matrix(b_messages[i]).getT())
             #Add the new result to s_vector.
             s_vector.append(np.ravel(self.normalizer(sv).getT()).tolist())
         return s_vector
@@ -135,18 +141,24 @@ observations_B_1 = np.matrix([[0,0]]) #0 is equals umbrella, 1 is equal no umbre
 emissions = np.matrix([[0.9, 0.1],[0.2, 0.8]]) #Emissions probabilites
 
 model = HMM(transmissions, emissions) #create HMM model instance. We don't know the initial states, so we don't pass this one. 
-
-print("Task B_1 forward states normalized:t0 - t {} ".format(model.forward(observations_B_1)))
-
+#Part B 1
+print("########## PART B 1 ############")
+print("Task B_1 forward states normalized:t0 to t \n{} ".format(model.forward(observations_B_1)))
+print("\n########## PART B 2 ############")
+#Part B 2
 observations_B_2 = np.matrix([0,0,1,0,0]) # umbrella, umbrella, no umbrella, umbrella, umbrella.
-print("Task B_2 forward states normalized from stat t0 to t \n{}".format(model.forward(observations_B_2)))
+print("\Task B_2 forward states normalized from stat t0 to t \n{}".format(model.forward(observations_B_2)))
 
-#Part C
+#Part C 1
 observations_C_1 = observations_B_1 # umbrella, umbrella.
-
-print("Task C_1 P(X_1|e_1:2) {}".format(model.forward_backward(observations_C_1)[-1]) )
-
+print("\n########## PART C 1 ############")
+print("Task C_1 P(X_1|e_1:2) {}".format(model.forward_backward(observations_C_1)[1]) )
+print("Task C_1 SV {}".format(model.forward_backward(observations_C_1)) )
+print("Task C_1 backward messages: \n {}".format(model.backward(observations_C_1)))
+print("Task C_1 forward messages: \n {}".format(model.forward(observations_C_1)))
+#Part C 2
 observations_C_2 = observations_B_2 # umbrella, umbrella, no umbrella, umbrella, umbrella.
-
-print("\nTask C_2 backward messages: \n{}".format(model.backward(observations_C_2)) )
+print("\n########## PART C 2 ############")
+print("Task C_2 backward messages: \n{}".format(model.backward(observations_C_2)) )
 print("Task C_2 smoothed probability values: \n{}".format(model.forward_backward(observations_C_2)))
+print("Task C_2 forward messages: \n{}".format(model.forward(observations_C_2)))
